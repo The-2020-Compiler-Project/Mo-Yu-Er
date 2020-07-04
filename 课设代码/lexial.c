@@ -1,6 +1,7 @@
 #include "lexial.h"
 #include <stdio.h>
 #include <string.h>
+#include <Windows.h>
 DynString tkstr;
 DynString outstr;
 char ch;
@@ -171,7 +172,7 @@ void skip_white_space()
             }
             line_num++;
         }
-        //printf("%c", ch);
+        printf("%c", ch);
         get_ch();
     }
 }
@@ -189,7 +190,8 @@ void preprocess()
             get_ch();
             if (ch == '*')
             {
-                //处理注释
+                get_ch();
+                parse_comment();
             }
             else
             {
@@ -253,17 +255,123 @@ void get_token()
         token = TK_END;
         get_ch();
         break;
+    case '[':
+        token = TK_OPENBR;
+        get_ch();
+        break;
+    case ']':
+        token = TK_CLOSEBR;
+        get_ch();
+        break;
+    case ',':
+        token = TK_COMMA;
+        get_ch();
+        break;
+    case '!':
+        get_ch();
+        if (token == '=')
+        {
+            token = TK_NEQ;
+            get_ch();
+        }
+        else
+        {
+            error("目前不支持!操作符");
+        }
+        break;
+    case '<':
+        get_ch();
+        if (ch == '=')
+        {
+            token = TK_LEQ;
+            get_ch();
+        }
+        else
+        {
+            token = TK_LT;
+        }
+        break;
+    case '>':
+        get_ch();
+        if (ch == '=')
+        {
+            token = TK_GEQ;
+            get_ch();
+        }
+        else
+        {
+            token = TK_GT;
+        }
+        break;
+    case '=':
+        get_ch();
+        if (ch == '=')
+        {
+            token = TK_EQ;
+            get_ch();
+        }
+        else
+        {
+            token = TK_ASSIGN;
+        }
+        break;
+    case '.':
+        get_ch();
+        if (ch == '.')
+        {
+            get_ch();
+            if (ch == '.')
+            {
+                token = TK_ELLIPSIS;
+                get_ch();
+            }
+            else
+            {
+                error("省略号拼写错误");
+            }
+        }
+        else
+        {
+            token = TK_DOT;
+        }
     case ';':
         token = TK_SEMICOLON;
+        get_ch();
+        break;
+    case '&':
+        token = TK_AND;
+        get_ch();
+        break;
+    case '+':
+        token = TK_PLUS;
+        get_ch();
+        break;
+    case '-':
+        token == TK_MINUS;
+        get_ch();
+        break;
+    case '*':
+        token = TK_STAR;
+        get_ch();
+        break;
+    //预处理发现/不是注释
+    case '/':
+        token = TK_DIVIDE;
+        get_ch();
+        break;
+    case '%':
+        token = TK_MOD;
         get_ch();
         break;
     case EOF:
         token = TK_EOF;
         break;
     default:
+        error("不能处理的字符:%02x", ch);
         get_ch();
         break;
     }
+    color_token();
 }
 
 int is_letter(char c)
@@ -309,10 +417,10 @@ void parse_cchar()
     char c;
     str_reset(&tkstr);
     str_reset(&outstr);
-    getch();
+    get_ch();
     if (ch == '\\')
     {
-        getch();
+        get_ch();
         switch (ch)
         {
         case '0':
@@ -431,6 +539,38 @@ void parse_cstr()
     get_ch();
 }
 
+void parse_comment()
+{
+    int is_finish = 0;
+    while (ch != EOF)
+    {
+        while (ch != '\n' && ch != '*' && ch != EOF)
+        {
+            get_ch();
+        }
+        if (ch == '\n')
+        {
+            line_num++;
+            get_ch();
+        }
+        else if (ch == '*')
+        {
+            get_ch();
+            if (ch == '/')
+            {
+                is_finish = 1;
+                get_ch();
+                break;
+            }
+        }
+    }
+    if (!is_finish)
+    {
+        error("缺少注释结束");
+    }
+}
+
+//通过token返回标识符的名称
 char* get_tkstr(int token)
 {
     //token超出单词表,此token不存在
@@ -450,12 +590,47 @@ char* get_tkstr(int token)
     }
 }
 
+void color_token()
+{
+    HANDLE h;//创建句柄
+    h = GetStdHandle(STD_OUTPUT_HANDLE);//实例化句柄
+    //超出初始化表的全部为标识符
+    if (token >= TK_IDENT)
+    {
+        SetConsoleTextAttribute(h, FOREGROUND_RED);
+    }
+    //token为关键字
+    else if (token >= KW_CHAR)
+    {
+        SetConsoleTextAttribute(h, FOREGROUND_BLUE);
+    }
+    //token为常量
+    else if (token >= TK_CCHAR)
+    {
+        SetConsoleTextAttribute(h, FOREGROUND_GREEN);
+    }
+    //到源文件末尾
+    else if (token == TK_EOF)
+    {
+        //白色
+        SetConsoleTextAttribute(h, 0x0f);
+    }
+    //token为其他符号
+    else
+    {
+        //紫色
+        SetConsoleTextAttribute(h, 0x0d);
+    }
+    printf("%s", get_tkstr(token));
+}
+
 
 void test_lexial()
 {
     do
     {
         get_token();
-        printf("%d %s\n", token, get_tkstr(token));
+        color_token();
     } while (token != TK_EOF);
+    printf("\n代码行数%d行\n", line_num);
 }
