@@ -1,18 +1,21 @@
-#include "scc.h"
-
-/*翻译单元，开始翻译*/
+#include "lzzwfc.h"
+#include "lexial.h"
+#include "grammer.h"
+#include "symbol.h"
+#include <stdlib.h>
+int token;
 void translation_unit()
 {
 	while (token != TK_EOF)
 	{
-		external_declaration(SC_GLOBAL);
+		external_declaration();
 	}
 }
 
-/*外部声明*/
-void external_declaration(int l)
+void external_declaration()
 {
-	if (!type_specifier())
+	Type* type = (Type*)malloc(sizeof(Type));
+	if (!type_specifier(type))
 	{
 		expect("<类型区分符>");
 	}
@@ -23,9 +26,9 @@ void external_declaration(int l)
 	}
 	else
 	{
-		declarator();
+		declarator(type, SC_GLOBAL);
 		//这里必须看select集合才能确定
-		if (token == TK_BEGIN)					//函数声明的情况
+		if (token == TK_BEGIN)
 		{
 			funcbody();
 		}
@@ -35,46 +38,43 @@ void external_declaration(int l)
 			get_token();
 			initializer();
 		}
-		else
+		while (token == TK_COMMA)
 		{
-			while (token == TK_COMMA)
-			{
-				get_token();
-				init_declarator();
-			}
+			Type* type = (Type*)malloc(sizeof(Type));
+			get_token();
+			init_declarator(type, SC_GLOBAL);	//必是全局变量
 		}
+		skip(TK_SEMICOLON);
 	}
 }
 
-/*声明*/
-void declaration()
+void declaration(int scope)
 {
-	if (!type_specifier(token))
+	Type* type = (Type*)malloc(sizeof(Type));
+	if (!type_specifier(type))
 	{
 		expect("类型区分符");
 	}
 	if (token != TK_SEMICOLON)
 	{
-		init_declarator_list();
+		init_declarator_list(type, scope);
 	}
 	skip(TK_SEMICOLON);
 }
 
-/*初值声明符表*/
-void init_declarator_list()
+void init_declarator_list(Type* type, int scope)
 {
-	init_declarator();
+	init_declarator(type, scope);
 	while (token != TK_SEMICOLON)
 	{
 		skip(TK_COMMA);
-		init_declarator();
+		init_declarator(type, scope);
 	}
 }
 
-/*初值声明符*/
-void init_declarator()
+void init_declarator(Type* type, int scope)
 {
-	declarator();
+	declarator(type, scope);
 	if (token == TK_ASSIGN)
 	{
 		get_token();
@@ -86,9 +86,7 @@ void init_declarator()
 	}
 }
 
-/*类型区分符
-包括int，char，short，void，结构体*/
-int type_specifier()
+int type_specifier(Type* type)
 {
 	int is_type = 0;
 	if (token == KW_INT || token == KW_CHAR || token == KW_SHORT || token == KW_VOID)
@@ -96,15 +94,38 @@ int type_specifier()
 		is_type = 1;
 		get_token();
 	}
-	else if (token == KW_STRUCT)
+	switch (token)
 	{
+	case KW_INT:
+		is_type = 1;
+		get_token();
+		type->t = T_INT;
+		break;
+	case KW_CHAR:
+		is_type = 1;
+		get_token();
+		type->t = T_SHORT;
+		break;
+	case KW_SHORT:
+		is_type = 1;
+		get_token();
+		type->t = T_SHORT;
+		break;
+	case KW_VOID:
+		is_type = 1;
+		get_token();
+		type->t = T_VOID;
+		break;
+	case KW_STRUCT:
 		is_type = 1;
 		struct_specifier();
+		break;
+	default:
+		break;
 	}
 	return is_type;
 }
 
-/*结构区分符*/
 void struct_specifier()
 {
 	skip(KW_STRUCT);
@@ -121,7 +142,6 @@ void struct_specifier()
 	}
 }
 
-/*结构声明符表*/
 void struct_declaration_list()
 {
 	while (token != TK_END)
@@ -130,25 +150,23 @@ void struct_declaration_list()
 	}
 }
 
-/*结构声明*/
 void struct_declaration()
 {
+	Type* type;
 	if (is_type_specifier(token))
 	{
-		type_specifier();
+		type_specifier(type);
 	}
-	declarator();
+	declarator(type, SC_LOCAL);
 	while (token != TK_SEMICOLON)
 	{
 		skip(TK_COMMA);
-		declarator();
+		declarator(type, SC_LOCAL);
 	}
 	skip(TK_SEMICOLON);
 }
 
-
-/*函数调用的情况
-可以为空*/
+//可以为空
 void function_calling_convention()
 {
 	if (token == KW_CDECL || token == KW_STDCALL)
@@ -158,7 +176,6 @@ void function_calling_convention()
 	}
 }
 
-/*结构成员对齐*/
 void struct_member_alignment()
 {
 	if (token == KW_ALIGN)
@@ -176,9 +193,7 @@ void struct_member_alignment()
 		skip(TK_CLOSEPA);
 	}
 }
-
-/*声明符*/
-void declarator()
+void declarator(Type* type, int scope)
 {
 	while (token == TK_STAR)
 	{
@@ -186,16 +201,18 @@ void declarator()
 	}
 	function_calling_convention();
 	struct_member_alignment();
-	direct_declarator();
+	direct_declarator(type, scope);
 }
 
-/*直接声明符*/
-void direct_declarator()
+void direct_declarator(Type* type, int scope)
 {
+	int addr = 0; //区距
 	if (token >= TK_IDENT)
 	{
+		//插入符号表的语义动作
+		var_sym_put(SC_LVAL|scope, token, addr, type);
+		direct_declarator_postfix(type);
 		get_token();
-		direct_declarator_postfix();
 	}
 	else
 	{
@@ -203,10 +220,10 @@ void direct_declarator()
 	}
 }
 
-/*直接声明符后缀*/
-void direct_declarator_postfix()
+void direct_declarator_postfix(Type* type)
 {
-	if (token == TK_OPENBR)				//[]和[cint]情况
+	//如果是左中括号[，说明是数组
+	if (token == TK_OPENBR)
 	{
 		get_token();
 		if (token == TK_CINT)
@@ -214,8 +231,10 @@ void direct_declarator_postfix()
 			get_token();
 		}
 		skip(TK_CLOSEBR);
+		direct_declarator_postfix(type); //这个地方有问题，要改
 	}
-	else if (token == TK_OPENPA)		//()和(形参)情况
+	//如果标识符后是(，说明是函数
+	else if (token == TK_OPENPA)
 	{
 		get_token();
 		if (is_type_specifier(token))
@@ -224,23 +243,29 @@ void direct_declarator_postfix()
 		}
 		skip(TK_CLOSEPA);
 	}
+	//标识符后啥也没有，说明是普通类型的变量
+	else
+	{
+
+	}
 }
 
-/*形参类型表*/
 void parameter_type_list()
 {
-	type_specifier();
+	Type* type = (Type*)malloc(sizeof(Type));
+	type_specifier(type);
 	if (token == TK_STAR || token == KW_CDECL || token == KW_STDCALL)
 	{
-		declarator();
+		declarator(type,SC_LOCAL);	//参数表必为局部变量
 	}
 	while (token == TK_COMMA)
 	{
+		Type* new_type = (Type*)malloc(sizeof(Type));
 		get_token();
-		type_specifier();
+		type_specifier(new_type);
 		if (token == TK_STAR || token == KW_CDECL || token == KW_STDCALL)
 		{
-			declarator();
+			declarator(new_type, SC_LOCAL);
 		}
 	}
 	if (token == TK_COMMA)
@@ -250,7 +275,6 @@ void parameter_type_list()
 	}
 }
 
-/*函数体*/
 void funcbody()
 {
 	compound_statement();
@@ -261,8 +285,6 @@ void initializer()
 	assignment_expression();
 }
 
-/*语句
-包括复合，选择，循环，跳转，表达式语句*/
 void statement()
 {
 	switch (token)
@@ -291,13 +313,12 @@ void statement()
 	}
 }
 
-/*复合语句*/
 void compound_statement()
 {
 	skip(TK_BEGIN);
 	while (is_type_specifier(token))
 	{
-		declaration();
+		declaration(SC_LOCAL);	//复合语句中必为局部变量
 	}
 	while (token != TK_END)
 	{
@@ -306,7 +327,6 @@ void compound_statement()
 	skip(TK_END);
 }
 
-/*判断是否为类型区分符*/
 int is_type_specifier(int v)
 {
 	if (v == KW_INT || v == KW_CHAR || v == KW_SHORT || v == KW_VOID || v==KW_STRUCT)
@@ -316,7 +336,6 @@ int is_type_specifier(int v)
 	return 0;
 }
 
-/*表达式语句*/
 void expression_statement()
 {
 	if (token == TK_SEMICOLON)
@@ -330,7 +349,6 @@ void expression_statement()
 	}
 }
 
-/*选择语句*/
 void if_statement()
 {
 	skip(KW_IF);
@@ -345,7 +363,6 @@ void if_statement()
 	}
 }
 
-/*循环语句*/
 void for_statement()
 {
 	skip(KW_FOR);
@@ -357,21 +374,18 @@ void for_statement()
 	statement();
 }
 
-/*continue语句*/
 void continue_statement()
 {
 	skip(KW_CONTINUE);
 	skip(TK_SEMICOLON);
 }
 
-/*break语句*/
 void break_statement()
 {
 	skip(KW_BREAK);
 	skip(TK_SEMICOLON);
 }
 
-/*return语句*/
 void return_statement()
 {
 	skip(KW_RETURN);
@@ -382,7 +396,6 @@ void return_statement()
 	skip(TK_SEMICOLON);
 }
 
-/*表达式*/
 void expression()
 {
 	assignment_expression();
@@ -393,7 +406,6 @@ void expression()
 	}
 }
 
-/*赋值表达式*/
 void assignment_expression()
 {
 	equality_expression();
@@ -404,7 +416,6 @@ void assignment_expression()
 	}
 }
 
-/*相等和不等表达式*/
 void equality_expression()
 {
 	relational_expression();
@@ -415,7 +426,6 @@ void equality_expression()
 	}
 }
 
-/*关系表达式*/
 void relational_expression()
 {
 	additive_expression();
@@ -426,7 +436,6 @@ void relational_expression()
 	}
 }
 
-/*加减类表达式*/
 void additive_expression()
 {
 	multiplicative_expression();
@@ -437,7 +446,6 @@ void additive_expression()
 	}
 }
 
-/*乘除类表达式*/
 void multiplicative_expression()
 {
 	unary_expression();
@@ -448,7 +456,6 @@ void multiplicative_expression()
 	}
 }
 
-/*一元表达式*/
 void unary_expression()
 {
 	if (token == TK_AND || token == TK_STAR || token == TK_PLUS || token == TK_MINUS)
@@ -466,16 +473,15 @@ void unary_expression()
 	}
 }
 
-/*sizeof表达式*/
 void sizeof_expression()
 {
+	Type type;
 	skip(KW_SIZEOF);
 	skip(TK_OPENPA);
-	type_specifier();
+	type_specifier(&type);
 	skip(TK_CLOSEPA);
 }
 
-/*后缀表达式*/
 void postfix_expression()
 {
 	primary_expression();
@@ -512,7 +518,6 @@ void postfix_expression()
 	}
 }
 
-/*初等表达式*/
 void primary_expression()
 {
 	if (token >= TK_IDENT)
@@ -537,7 +542,6 @@ void primary_expression()
 	}
 }
 
-/*实参表达式表*/
 void argument_expression_list()
 {
 	assignment_expression();
