@@ -7,7 +7,8 @@ DynString outstr;
 char ch;
 int token;
 FILE* fin;
-int line_num = 0;
+int line_num = 1;
+int tkvalue = 0;
 unsigned int ElfHash(char* str)
 {
     unsigned int hash = 0;
@@ -83,6 +84,7 @@ TkWord* TkWord_insert(char* word)
     return tp;
 }
 
+//分配一块内容全为0的size大小的内存空间
 void* mallocz(int size)
 {
     void* p;
@@ -90,6 +92,7 @@ void* mallocz(int size)
     if (!p && size)
     {
         //错误处理
+        error("内存分配失败");
     }
     memset(p, 0, size);
     return p;
@@ -410,6 +413,7 @@ void parse_num()
     //ch始终指向下一个char
     str_cat(&tkstr, '\0');
     str_cat(&outstr, '\0');
+    tkvalue = atoi(tkstr.str);
 }
 
 void parse_cchar()

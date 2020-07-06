@@ -4,6 +4,7 @@
 #include "symbol.h"
 #include <stdlib.h>
 int token;
+int delay_v;
 void translation_unit()
 {
 	while (token != TK_EOF)
@@ -28,6 +29,7 @@ void external_declaration()
 	{
 		declarator(type, SC_GLOBAL);
 		//这里必须看select集合才能确定
+
 		if (token == TK_BEGIN)
 		{
 			funcbody();
@@ -89,11 +91,7 @@ void init_declarator(Type* type, int scope)
 int type_specifier(Type* type)
 {
 	int is_type = 0;
-	if (token == KW_INT || token == KW_CHAR || token == KW_SHORT || token == KW_VOID)
-	{
-		is_type = 1;
-		get_token();
-	}
+	type->ref = NULL;	//基础类型没有关联，结构体ref指向结构体定义，数组指向数组结果
 	switch (token)
 	{
 	case KW_INT:
@@ -104,7 +102,7 @@ int type_specifier(Type* type)
 	case KW_CHAR:
 		is_type = 1;
 		get_token();
-		type->t = T_SHORT;
+		type->t = T_CHAR;
 		break;
 	case KW_SHORT:
 		is_type = 1;
@@ -195,24 +193,40 @@ void struct_member_alignment()
 }
 void declarator(Type* type, int scope)
 {
+	int addr = 0; //区距
+	int r = SC_SYM | scope;
 	while (token == TK_STAR)
 	{
+		//指针类型入符号表
+		mk_pointer(type, scope);
 		get_token();
 	}
 	function_calling_convention();
 	struct_member_alignment();
 	direct_declarator(type, scope);
+	//不是函数，用变量符号表入表函数
+	if ( (type->t & T_BTYPE) != T_FUNC)
+	{
+		//标识符插入符号表的语义动作
+		if ((type->t & T_ARRAY) == 0)	//数组类型标志位为0表示不是数组，说明可以是左值
+		{
+			r = r | SC_LVAL;
+		}
+		var_sym_put(r, delay_v, addr, type);
+	}
+	else
+	{
+
+	}
 }
 
 void direct_declarator(Type* type, int scope)
 {
-	int addr = 0; //区距
 	if (token >= TK_IDENT)
 	{
-		//插入符号表的语义动作
-		var_sym_put(SC_LVAL|scope, token, addr, type);
-		direct_declarator_postfix(type);
+		delay_v = token; //得记录下标识符的编号，否则处理完后缀后就没了
 		get_token();
+		direct_declarator_postfix(type, scope);
 	}
 	else
 	{
@@ -220,28 +234,36 @@ void direct_declarator(Type* type, int scope)
 	}
 }
 
-void direct_declarator_postfix(Type* type)
+void direct_declarator_postfix(Type* type, int scope)
 {
+	Symbol* sym;
+	int array_size = -1;	//数组的长度
 	//如果是左中括号[，说明是数组
 	if (token == TK_OPENBR)
 	{
 		get_token();
 		if (token == TK_CINT)
 		{
+			array_size = tkvalue;	//tkvalue为[]中的数字值
 			get_token();
 		}
 		skip(TK_CLOSEBR);
-		direct_declarator_postfix(type); //这个地方有问题，要改
+		//数组进入符号表的语义动作
+		mk_array(type, array_size, scope);
+		direct_declarator_postfix(type, scope);
 	}
 	//如果标识符后是(，说明是函数
 	else if (token == TK_OPENPA)
 	{
+		int count_para = 0;	//参数个数
+		sym = func_sym_put(type);
 		get_token();
 		if (is_type_specifier(token))
 		{
-			parameter_type_list();
+			count_para = parameter_type_list();	//解析所有的形参变量
 		}
 		skip(TK_CLOSEPA);
+		mk_paralist(sym, count_para);
 	}
 	//标识符后啥也没有，说明是普通类型的变量
 	else
@@ -250,12 +272,15 @@ void direct_declarator_postfix(Type* type)
 	}
 }
 
-void parameter_type_list()
+int parameter_type_list()
 {
+	int count_para = 0;	//形参个数
 	Type* type = (Type*)malloc(sizeof(Type));
 	type_specifier(type);
-	if (token == TK_STAR || token == KW_CDECL || token == KW_STDCALL)
+	//token为*或者标识符
+	if (token == TK_STAR || token >= TK_IDENT);
 	{
+		count_para++;
 		declarator(type,SC_LOCAL);	//参数表必为局部变量
 	}
 	while (token == TK_COMMA)
@@ -263,8 +288,9 @@ void parameter_type_list()
 		Type* new_type = (Type*)malloc(sizeof(Type));
 		get_token();
 		type_specifier(new_type);
-		if (token == TK_STAR || token == KW_CDECL || token == KW_STDCALL)
+		if (token == TK_STAR || token >= TK_IDENT)
 		{
+			count_para++;
 			declarator(new_type, SC_LOCAL);
 		}
 	}
@@ -273,6 +299,7 @@ void parameter_type_list()
 		get_token();
 		skip(TK_ELLIPSIS);
 	}
+	return count_para;
 }
 
 void funcbody()

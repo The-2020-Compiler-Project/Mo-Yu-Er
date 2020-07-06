@@ -65,6 +65,8 @@ typedef struct TkWord
     int tkcode;
     struct TkWord* next;
     char* word;
+    //如果是结构体变量的话，sym_struct指向符号表中结构体定义,sym_identifier为空
+    //如果是普通变量的话，sym_struct为空，sym_identifier指向符号表
     struct Symbol* sym_struct;
     struct Symbol* sym_identifier;
 }TkWord;
@@ -84,10 +86,9 @@ void* mallocz(int size);
 /*********************词法分析全局变量及函数声明开始**************************/
 extern char ch;
 extern FILE* fin;
-extern int line_num;    //源程序行数
-extern int token;
 extern DynString tkstr; //词法分析临时保存单词
 extern DynString outstr;    //用作输出单词,转义字符可直接输出
+extern int tkvalue; //整形常量值，比如在计算数组长度时有用
 void init_lexial();
 void get_ch();
 void skip_white_space();
@@ -99,6 +100,8 @@ void parse_identifier();
 void parse_num();
 void parse_cchar();
 void parse_cstr();
+void parse_comment();
 char* get_tkstr(int token);
+void color_token();
 void test_lexial();
 /*********************词法分析全局变量及函数声明结束**************************/
