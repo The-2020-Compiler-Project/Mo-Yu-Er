@@ -1,9 +1,11 @@
 #include "coff.h"
 #include "lexial.h"
-int nsec_images = 0;
+#include "gencode.h"
+int nsec_images;
 
 void init_coff()
 {
+	nsec_images = 0;
 	array_init(&sections, 8);	//八个基本节
 	//可作为代码执行|包含可执行代码
 	sec_text = new_section(".text", IMAGE_SCN_MEM_EXECUTE | IMAGE_SCN_CNT_CODE);
@@ -21,7 +23,7 @@ void init_coff()
 	//符号表节和字符串节在同一节
 	//不会形成映像文件的一部分|可读
 	sec_symtab = new_coffsym_section(".symtab", IMAGE_SCN_LNK_REMOVE | IMAGE_SCN_MEM_READ, ".strtab");
-
+	sec_dynsymtab = new_coffsym_section(".dynsym",IMAGE_SCN_LNK_REMOVE | IMAGE_SCN_MEM_READ, ".dynstr");
 	//空表项，每个表项都是20字节
 	add_coffsym(sec_symtab, "", 0, 0, 0, IMAGE_SYM_CLASS_NULL);
 	//IMAGE_SYM_CLASS_STATIC：符号在节中的偏移，若value=0，表示节名
@@ -29,12 +31,13 @@ void init_coff()
 	add_coffsym(sec_symtab, ".data", 0, sec_data->idx, 0, IMAGE_SYM_CLASS_STATIC);
 	add_coffsym(sec_symtab, ".bss", 0, sec_bss->idx, 0, IMAGE_SYM_CLASS_STATIC);
 	add_coffsym(sec_symtab, ".rdata", 0, sec_rdata->idx, 0, IMAGE_SYM_CLASS_STATIC);
+	add_coffsym(sec_dynsymtab, "", 0, 0, 0, IMAGE_SYM_CLASS_NULL);
 }
 
 Section* new_section(char* name, int Characteristics)
 {
 	Section* sec = mallocz(sizeof(Section));	//这里用mallocz更好，如果用malloc，还要初始化
-	int init_size = 8;	//初始分配的节的大小，也就是SizeOfRawData
+	int init_size = 8;	//初始分配的节的大小，最后成为SizeOfRawData
 	sec->data = mallocz(sizeof(char) * init_size);	//init_size个字节的0
 	sec->idx = sections.count + 1;	//节序号从1开始，我也想从0开始，为了跟官方做法一样吧
 	strcpy(sec->sh.Name, name);
@@ -49,7 +52,7 @@ Section* new_section(char* name, int Characteristics)
 	return sec;
 }
 
-//创建符号表结
+//创建符号表节
 Section* new_coffsym_section(char* symtab_name, int Characteristics, char* strtab_name)
 {
 	Section* sec = new_section(symtab_name, Characteristics);
@@ -80,7 +83,7 @@ int add_coffsym(Section* symtab, char* name, int val, int sec_index, short type,
 		hashtab[keyno] = cs;	//指向最新的冲突
 
 	}
-	return NULL;
+	return cs;
 }
 
 //在符号表中查找某个符号是否存在
@@ -113,7 +116,7 @@ void* section_ptr_add(Section* sec, int size)
 	{
 		realloc_section(sec, sec->data_offset); //sec->data_offset为当前偏移地址，也是当前的容量
 	}
-	return sec->data + offset;
+	return sec->data + offset; //返回原来的地址，当前偏移量已经更改，但数据还没保存
 }
 
 void realloc_section(Section* sec, int new_size)
@@ -144,6 +147,44 @@ char* add_coffstr(Section* sec, char* name)
 	return pstr;				//就相当于添加了\0
 }
 
+void add_coffreloc(Section* sec, Symbol* sym, int offset, char type)
+{
+	int cfsym;
+	char* name;
+	if (!sym->c)
+		add_update_coffsym(sym, 0, IMAGE_SYM_UNDEFINED, CST_FUNC, IMAGE_SYM_CLASS_EXTERNAL);
+	name = ((TkWord*)tktable.data[sym->v])->word;
+	cfsym = search_coffsym(sec_symtab, name);
+	direct_add_coffreloc(offset, cfsym, sec->idx, type);
+}
+
+void add_update_coffsym(Symbol* s, int val, int sec_index,
+	short type, char StorageClass)
+{
+	char* name;
+	CoffSym* cfsym;
+	if (!s->c)
+	{
+		name = ((TkWord*)tktable.data[s->v])->word;
+		s->c = add_coffsym(sec_symtab, name, val, sec_index, type, StorageClass);
+	}
+	else //函数先声明后定义
+	{
+		cfsym = &((CoffSym*)sec_symtab->data)[s->c];
+		cfsym->Value = val;
+		cfsym->Section = sec_index;
+	}
+}
+
+void direct_add_coffreloc(int offset, int cfsym, char section, char type)
+{
+	CoffReloc* rel = section_ptr_add(sec_rel, sizeof(CoffReloc));
+	rel->offset = offset;
+	rel->cfsym = cfsym;
+	rel->section = section;
+	rel->type = type;
+}
+
 //从当前位置到new_pos补0
 void fpad(FILE* fp, int new_pos)
 {
@@ -158,7 +199,7 @@ void write_obj(char* name)
 	FILE* fout = fopen(name, "wb");
 	int i, sh_size, nsec_obj = 0;
 	IMAGE_FILE_HEADER* fh;
-	nsec_obj = sections.count;	//要写入到obj的节的数目，这里以后还要改，还得删去动态链接节
+	nsec_obj = sections.count - 2;	//要写入到obj的节的数目，这里以后还要改，还得删去动态链接节（已改）
 	sh_size = sizeof(IMAGE_SECTION_HEADER); //40
 	file_offset = sizeof(IMAGE_FILE_HEADER) + nsec_obj * sh_size; //20+8*40=340;
 	fpad(fout, file_offset);	//先写入COFF文件头和节头表，全为0
@@ -172,7 +213,7 @@ void write_obj(char* name)
 		sec->sh.SizeOfRawData = sec->data_offset;
 		file_offset += sec->data_offset;
 	}
-	fseek(fout, SEEK_SET, 0);	//文件指针指向文件开始
+	fseek(fout, 0, SEEK_SET);	//文件指针指向文件开始
 	fh->Machine = IMAGE_FILE_MACHINE_I386;
 	fh->NumberOfSections = nsec_obj;
 	fh->PointerToSymbolTable = sec_symtab->sh.PointerToRawData;	//指向符号表的指针

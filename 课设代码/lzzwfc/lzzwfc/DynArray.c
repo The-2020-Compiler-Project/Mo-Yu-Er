@@ -48,7 +48,7 @@ void array_pop(DynArray* parr)
 int array_search(DynArray* parr, int key)
 {
 	int** p = (int**)parr->data;
-	for (int i = 0; i < parr->capacity; i++, p++)
+	for (int i = 0; i < parr->count; i++, p++)
 	{
 		if (**p == key)
 		{

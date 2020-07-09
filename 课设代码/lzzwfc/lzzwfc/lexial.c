@@ -480,7 +480,6 @@ void parse_cstr()
     char c;
     str_reset(&tkstr);
     str_reset(&outstr);
-    str_cat(&tkstr, ch);
     str_cat(&outstr, ch);
     get_ch();
     while (ch != '\"')
@@ -536,7 +535,6 @@ void parse_cstr()
         str_cat(&outstr, ch);
         get_ch();
     }
-    str_cat(&tkstr, ch);
     str_cat(&outstr, ch);
     str_cat(&tkstr, '\0');
     str_cat(&outstr, '\0');

@@ -1,15 +1,16 @@
-/*
-int main()
+
+void main()
 {
 printf("Hello World!\n");
-return 0;
+/*return 0;*/
 }
 
 void _entry()
 {
+	main();
+/*
 int ret;
 ret = main();
 exit(ret);
-}
 */
-char main(int a, int b);
+}

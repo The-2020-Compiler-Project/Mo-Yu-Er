@@ -151,9 +151,12 @@
     <ClCompile Include="DynArray.c" />
     <ClCompile Include="DynString.c" />
     <ClCompile Include="error.c" />
+    <ClCompile Include="gencode.c" />
     <ClCompile Include="grammer.c" />
     <ClCompile Include="lexial.c" />
     <ClCompile Include="lzzwfc.c" />
+    <ClCompile Include="operand.c" />
+    <ClCompile Include="outpe.c" />
     <ClCompile Include="stack.c" />
     <ClCompile Include="symbol.c" />
   </ItemGroup>
@@ -162,9 +165,12 @@
     <ClInclude Include="DynArray.h" />
     <ClInclude Include="DynString.h" />
     <ClInclude Include="error.h" />
+    <ClInclude Include="gencode.h" />
     <ClInclude Include="grammer.h" />
     <ClInclude Include="lexial.h" />
     <ClInclude Include="lzzwfc.h" />
+    <ClInclude Include="operand.h" />
+    <ClInclude Include="outpe.h" />
     <ClInclude Include="stack.h" />
     <ClInclude Include="symbol.h" />
   </ItemGroup>

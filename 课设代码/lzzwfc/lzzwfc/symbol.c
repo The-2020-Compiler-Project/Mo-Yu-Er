@@ -2,6 +2,8 @@
 #include "lexial.h"
 #include "grammer.h"
 #include <stdlib.h>
+Type int_type;
+int token;
 //符号插入符号表
 Symbol* sym_push(Stack* s, int v, int r, int c, Type* type)
 {
@@ -163,4 +165,51 @@ Symbol* mk_paralist(Symbol* s, int count_para)
 		end->next = NULL;
 	}
 
+}
+
+int type_size(Type* type)
+{
+	int t = type->t & T_BTYPE;
+	int size = 0;
+	switch (t)
+	{
+	case T_INT:
+		size = 4;
+		break;
+	case T_SHORT:
+		size = 2;
+		break;
+	case T_CHAR:
+		size = 1;
+		break;
+	case T_PTR:
+		if (type->t & T_ARRAY) //数组
+		{
+			return type->ref->c * type_size(&type->ref->type);
+		}
+		else //只是指针
+		{
+			return 4;
+		}
+	default:
+		break;
+	}
+	return size;
+}
+
+int size_align(int size, int align_size)
+{
+	return (size % align_size == 0) ? size : (align_size * (size / align_size + 1));
+}
+
+Symbol* sec_sym_put(char* sec, int c)
+{
+	TkWord* tp;
+	Symbol* s;
+	Type type;
+	type.t = T_INT;
+	tp = TkWord_insert(sec);
+	token = tp->tkcode;
+	s = sym_push(&global_sym_stack, token, SC_GLOBAL, c, &type);
+	return s;
 }

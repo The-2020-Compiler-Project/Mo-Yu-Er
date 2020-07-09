@@ -2,9 +2,12 @@
 #include "lexial.h"
 #include "grammer.h"
 #include "symbol.h"
+#include "gencode.h"
+#include "coff.h"
 #include <stdlib.h>
 int token;
 int delay_v;
+int loc;
 void translation_unit()
 {
 	while (token != TK_EOF)
@@ -33,6 +36,7 @@ void external_declaration()
 		if (token == TK_BEGIN)
 		{
 			funcbody();
+			return;
 		}
 		//这里必须看select集合才能确定
 		else if (token == TK_ASSIGN)
@@ -150,7 +154,7 @@ void struct_declaration_list()
 
 void struct_declaration()
 {
-	Type* type;
+	Type* type = (Type*)malloc(sizeof(Type));
 	if (is_type_specifier(token))
 	{
 		type_specifier(type);
@@ -214,19 +218,28 @@ void declarator(Type* type, int scope)
 		}
 		var_sym_put(r, delay_v, addr, type);
 	}
+	//函数符号入表
 	else
 	{
-
+		Symbol* sym = sym_push(&global_sym_stack, delay_v, SC_GLOBAL | SC_SYM, addr, type);
+		add_update_coffsym(sym, ind, sec_text->idx, CST_FUNC, IMAGE_SYM_CLASS_EXTERNAL);
 	}
 }
 
 void direct_declarator(Type* type, int scope)
 {
+	int size;
 	if (token >= TK_IDENT)
 	{
 		delay_v = token; //得记录下标识符的编号，否则处理完后缀后就没了
 		get_token();
 		direct_declarator_postfix(type, scope);
+		if (scope == SC_LOCAL)
+		{
+			size = type_size(type);
+			size = size_align(size, 4);
+			loc += size;
+		}
 	}
 	else
 	{
@@ -304,7 +317,10 @@ int parameter_type_list()
 
 void funcbody()
 {
+	gen_func_pre();
 	compound_statement();
+	gen_func_end();
+	sec_text->data_offset = ind;
 }
 
 void initializer()
@@ -343,6 +359,7 @@ void statement()
 void compound_statement()
 {
 	skip(TK_BEGIN);
+	loc = 0;
 	while (is_type_specifier(token))
 	{
 		declaration(SC_LOCAL);	//复合语句中必为局部变量
@@ -532,8 +549,27 @@ void postfix_expression()
 				get_token();
 			}
 		}
+		//函数调用表达式
 		else if (token == TK_OPENPA)
 		{
+			Type* type = (Type*)malloc(sizeof(Type));
+			type->t = T_FUNC;
+			type->ref = NULL;
+			Symbol* sym = sym_search(delay_v);
+			//没有声明的和定义的函数为外部符号
+			if (!sym)
+			{
+				//外部符号不进入Symbol表，但要进入.symtab
+				sym = (Symbol*)malloc(sizeof(Symbol));
+				sym->v = delay_v;
+				sym->c = 0;
+				sym->type = *type;
+				sym->next = NULL;
+				sym->prev_tok = NULL;
+				add_coffsym(sec_symtab, get_tkstr(delay_v), ind, 0, CST_FUNC, IMAGE_SYM_CLASS_EXTERNAL);
+			}
+			push_operand(type, SC_GLOBAL, 0);
+			opstack[optop - 1].sym = sym;
 			get_token();
 			argument_expression_list();
 			skip(TK_CLOSEPA);
@@ -549,13 +585,30 @@ void primary_expression()
 {
 	if (token >= TK_IDENT)
 	{
+		delay_v = token;
 		get_token();
 		return;
 	}
 	switch (token)
 	{
 	case TK_CINT:
+		get_token();
+		break;
 	case TK_CSTR:
+	{
+		/* 当做字符数组 */
+		Type* type = (Type*)malloc(sizeof(Type));
+		type->t = T_CHAR;
+		type->ref = NULL;
+		mk_array(type, strlen(tkstr.str), SC_GLOBAL);
+		push_operand(type, SC_GLOBAL|SC_SYM, sec_rdata->data_offset);
+		opstack[optop-1].sym = sym_sec_rdata;
+		/* 字符串常量写入rdata */
+		section_ptr_add(sec_rdata, strlen(tkstr.str) + 1);
+		memcpy(sec_rdata->data, tkstr.str, strlen(tkstr.str));
+		get_token();
+		break;
+	}
 	case TK_CCHAR:
 		get_token();
 		break;
@@ -571,10 +624,18 @@ void primary_expression()
 
 void argument_expression_list()
 {
+	int nb_args = 0;
+	//不为)说明有参数
+	if (token != TK_CLOSEPA)
+	{
+		nb_args++;
+	}
 	assignment_expression();
 	while (token == TK_COMMA)
 	{
+		nb_args++;
 		get_token();
 		assignment_expression();
 	}
+	gen_invoke(nb_args);
 }

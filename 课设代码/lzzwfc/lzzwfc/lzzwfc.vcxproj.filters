@@ -42,6 +42,15 @@
     <ClCompile Include="coff.c">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="operand.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="gencode.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="outpe.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="DynString.h">
@@ -69,6 +78,15 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="coff.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="operand.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="gencode.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="outpe.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

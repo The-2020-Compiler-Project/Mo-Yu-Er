@@ -48,3 +48,11 @@ void skip(int v)
 	}
 	get_token();
 }
+
+void link_error(char* fmt, ...)
+{
+	va_list ap;
+	va_start(ap, fmt);
+	handle_exception(STAGE_LINK, LEVEL_ERROR, fmt, ap);
+	va_end(ap);
+}

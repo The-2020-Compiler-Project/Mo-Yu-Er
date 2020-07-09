@@ -3,19 +3,19 @@
 //符号放在符号栈中
 Stack global_sym_stack;
 Stack local_sym_stack;
-
+//符号的数据类型
 typedef struct Type
 {
 	int t;
 	struct Symbol* ref;
 }Type;
-
+extern Type int_type;
 /* 符号的数据结构 */
 typedef struct Symbol
 {
 	int v;						//符号的单词编码
 	int r;						//符号存储类型
-	int c;						//符号关联值
+	int c;						//符号关联值，表示该符号在内存中是第几个符号
 	Type type;					//符号数据类型
 	struct Symbol* next;		//关联的其他符号
 	struct Symbol* prev_tok;	//指向前一个定义的同名符号
@@ -64,3 +64,6 @@ Symbol* sym_search(int v);
 Symbol* mk_pointer(Type* type, int scope);
 Symbol* mk_array(Type* type, int array_size, int scope);
 Symbol* mk_paralist(Symbol* s, int count_para);
+int type_size(Type* type);
+
+Symbol* sec_sym_put(char* sec, int c);
